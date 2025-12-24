@@ -1,0 +1,455 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    
+    <!-- 核心：启用 WebApp 全屏模式 -->
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    
+    <!-- 核心：控制状态栏样式 (black-translucent 会让内容延伸到状态栏下方，沉浸感最强) -->
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    
+    <!-- 设置标题 -->
+    <meta name="apple-mobile-web-app-title" content="FlipClock">
+    
+    <!-- 视口设置：禁止缩放 -->
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, minimal-ui">
+    
+    <title>Pro Split-Flap Clock</title>
+    
+    <style>
+        /* --- CSS Reset & Base --- */
+        * {
+            box-sizing: border-box;
+            -webkit-box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+            -webkit-tap-highlight-color: transparent;
+            user-select: none;
+            -webkit-user-select: none;
+            cursor: default;
+        }
+
+        body {
+            height: 100vh;
+            width: 100%;
+            overflow: hidden; /* 禁止滚动 */
+            font-family: "Helvetica Neue", Helvetica, Arial, sans-serif;
+            background-color: #111;
+            /* 修正 iOS 状态栏遮挡问题 (如果使用 black-translucent) */
+            /* padding-top: 20px; 可选，视具体审美决定，翻页钟居中其实不需要 */
+        }
+
+        /* --- Dynamic Background Layer --- */
+        #bg-layer {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            z-index: 1;
+            background-size: cover;
+            background-position: center;
+            background-image: -webkit-radial-gradient(center, ellipse cover, #eef2f3 0%, #8e9eab 100%);
+            -webkit-transition: -webkit-filter 0.5s;
+            transition: filter 0.5s;
+        }
+
+        /* Overlay */
+        #overlay-layer {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            z-index: 2;
+            background: rgba(0,0,0,0.15); /* 稍微加深一点以适应全屏 */
+        }
+
+        /* --- Main Clock Container --- */
+        .clock-wrapper {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            z-index: 10;
+            display: -webkit-box;
+            display: -webkit-flex;
+            display: flex;
+            -webkit-box-align: center;
+            -webkit-align-items: center;
+            align-items: center;
+            -webkit-box-pack: center;
+            -webkit-justify-content: center;
+            justify-content: center;
+            -webkit-transform-origin: center center;
+            transform-origin: center center;
+        }
+
+        .clock-group {
+            display: -webkit-box;
+            display: -webkit-flex;
+            display: flex;
+            padding: 20px;
+        }
+
+        /* --- The Split Flap Card --- */
+        .card {
+            position: relative;
+            width: 140px;
+            height: 210px;
+            margin: 0 6px; /* 稍微紧凑一点 */
+            background-color: #2b2b2b;
+            border-radius: 10px;
+            box-shadow: 
+                0 4px 0 #1a1a1a, 
+                0 15px 35px -5px rgba(0,0,0,0.5),
+                inset 0 1px 1px rgba(255,255,255,0.15);
+        }
+
+        .card-label {
+            position: absolute;
+            top: 10px;
+            left: 12px;
+            font-size: 9px;
+            color: #777;
+            font-weight: bold;
+            letter-spacing: 1px;
+            z-index: 20;
+            text-transform: uppercase;
+        }
+
+        .digit-container {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            border-radius: 10px;
+            overflow: hidden;
+        }
+
+        .half {
+            position: absolute;
+            left: 0;
+            width: 100%;
+            height: 50%;
+            overflow: hidden;
+            background-color: #2b2b2b;
+        }
+
+        .top {
+            top: 0;
+            border-radius: 10px 10px 0 0;
+            background: -webkit-linear-gradient(top, #3a3a3a 0%, #2b2b2b 100%);
+            border-bottom: 1px solid #151515;
+        }
+
+        .bottom {
+            bottom: 0;
+            border-radius: 0 0 10px 10px;
+            background: -webkit-linear-gradient(top, #2b2b2b 0%, #353535 100%);
+            border-top: 1px solid #444;
+        }
+
+        .number {
+            font-weight: 700;
+            font-size: 120px;
+            color: #e6e6e6;
+            line-height: 210px;
+            position: absolute;
+            left: 0;
+            right: 0;
+            width: 100%;
+            text-align: center;
+            letter-spacing: -3px;
+            -webkit-transition: font-size 0.3s ease;
+            transition: font-size 0.3s ease;
+        }
+
+        .top .number { top: 0; }
+        .bottom .number { top: -105px; }
+
+        .hinge {
+            position: absolute;
+            top: 50%;
+            width: 4px;
+            height: 10px;
+            background: #111;
+            margin-top: -5px;
+            border-radius: 2px;
+            z-index: 15;
+            box-shadow: inset 0 1px 2px rgba(255,255,255,0.1);
+        }
+        .hinge.left { left: -2px; }
+        .hinge.right { right: -2px; }
+
+        /* --- Settings Panel --- */
+        #settings-trigger {
+            position: absolute;
+            bottom: 20px;
+            right: 20px;
+            width: 40px;
+            height: 40px;
+            border-radius: 50%;
+            background: rgba(43, 43, 43, 0.4); /* 更透明一点 */
+            z-index: 100;
+            cursor: pointer;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.2);
+            display: -webkit-box;
+            display: flex;
+            -webkit-box-align: center;
+            align-items: center;
+            -webkit-box-pack: center;
+            justify-content: center;
+            -webkit-backdrop-filter: blur(5px); /* iOS 9 可能不支持，优雅降级 */
+        }
+        
+        .gear {
+            width: 20px;
+            height: 20px;
+            border: 2px solid #fff;
+            border-radius: 50%;
+            position: relative;
+        }
+        .gear:after {
+            content: '';
+            position: absolute;
+            top: 3px; left: 3px;
+            width: 10px; height: 10px;
+            background: #fff;
+            border-radius: 50%;
+        }
+
+        #settings-menu {
+            position: absolute;
+            bottom: 70px;
+            right: 20px;
+            width: 200px;
+            background: rgba(255, 255, 255, 0.95);
+            border-radius: 12px;
+            padding: 15px;
+            z-index: 99;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.3);
+            opacity: 0;
+            pointer-events: none;
+            -webkit-transform: translateY(10px);
+            transform: translateY(10px);
+            -webkit-transition: all 0.3s ease;
+            transition: all 0.3s ease;
+        }
+
+        #settings-menu.active {
+            opacity: 1;
+            pointer-events: auto;
+            -webkit-transform: translateY(0);
+            transform: translateY(0);
+        }
+
+        .setting-row { margin-bottom: 12px; border-bottom: 1px solid #eee; padding-bottom: 10px; }
+        .setting-row:last-child { border: none; margin: 0; padding: 0; }
+        .setting-label { font-size: 12px; color: #333; margin-bottom: 5px; display: block; font-weight: bold; }
+        .btn-group { display: -webkit-box; display: flex; gap: 5px; }
+        .btn { -webkit-box-flex: 1; flex: 1; padding: 8px; font-size: 11px; text-align: center; background: #f0f0f0; border-radius: 6px; color: #333; cursor: pointer; border: 1px solid #ddd; }
+        .btn:active { background: #ddd; }
+        .btn.active-mode { background: #333; color: #fff; border-color: #333; }
+
+    </style>
+</head>
+<body>
+
+    <div id="bg-layer"></div>
+    <div id="overlay-layer"></div>
+
+    <div class="clock-wrapper" id="clock-wrapper">
+        <div class="clock-group">
+            <!-- Hour -->
+            <div class="card">
+                <div class="hinge left"></div><div class="hinge right"></div>
+                <div class="card-label" id="ampm-label">24H</div>
+                <div class="digit-container">
+                    <div class="half top"><div class="number" id="h-top">12</div></div>
+                    <div class="half bottom"><div class="number" id="h-bottom">12</div></div>
+                </div>
+            </div>
+            <!-- Minute -->
+            <div class="card">
+                <div class="hinge left"></div><div class="hinge right"></div>
+                <div class="digit-container">
+                    <div class="half top"><div class="number" id="m-top">00</div></div>
+                    <div class="half bottom"><div class="number" id="m-bottom">00</div></div>
+                </div>
+            </div>
+            <!-- Second -->
+            <div class="card">
+                <div class="hinge left"></div><div class="hinge right"></div>
+                <div class="digit-container">
+                    <div class="half top"><div class="number" id="s-top">00</div></div>
+                    <div class="half bottom"><div class="number" id="s-bottom">00</div></div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Controls -->
+    <div id="settings-trigger"><div class="gear"></div></div>
+
+    <div id="settings-menu">
+        <div class="setting-row">
+            <span class="setting-label">时间格式 (Format)</span>
+            <div class="btn-group">
+                <div class="btn" id="btn-12h" onclick="setFormat(12)">12H</div>
+                <div class="btn active-mode" id="btn-24h" onclick="setFormat(24)">24H</div>
+            </div>
+        </div>
+        <div class="setting-row">
+            <span class="setting-label">数字大小 (Size)</span>
+            <div class="btn-group">
+                <div class="btn" onclick="adjustSize(-10)">-</div>
+                <div class="btn" onclick="adjustSize(10)">+</div>
+            </div>
+        </div>
+        <div class="setting-row">
+            <span class="setting-label">壁纸效果 (Wallpaper)</span>
+            <div class="btn-group">
+                <div class="btn" onclick="cycleBg()">换图</div>
+                <div class="btn" id="btn-blur" onclick="toggleBlur()">磨砂</div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // --- Prevent Elastic Scrolling (Rubber banding) on iOS ---
+        document.body.addEventListener('touchmove', function(e) {
+            // 阻止默认的滚动行为，这样就不会拖动整个页面出现灰色背景了
+            e.preventDefault();
+        }, false);
+
+        // --- Logic ---
+        var is24Hour = true;
+        var currentSize = 120;
+        var isBlurred = false;
+        var bgIndex = 0;
+        
+        var backgrounds = [
+            'linear-gradient(to bottom right, #eef2f3, #8e9eab)',
+            'linear-gradient(to bottom right, #232526, #414345)', 
+            'linear-gradient(to bottom right, #A7BFE8, #6190E8)', 
+            'linear-gradient(to bottom right, #ff9966, #ff5e62)',
+            'linear-gradient(to bottom right, #11998e, #38ef7d)' 
+        ];
+
+        var menu = document.getElementById('settings-menu');
+        var trigger = document.getElementById('settings-trigger');
+        var bgLayer = document.getElementById('bg-layer');
+        var amPmLabel = document.getElementById('ampm-label');
+
+        function updateClock() {
+            var now = new Date();
+            var h = now.getHours();
+            var m = now.getMinutes();
+            var s = now.getSeconds();
+            
+            var displayH = h;
+            var amPmText = "";
+
+            if (!is24Hour) {
+                amPmText = h >= 12 ? "PM" : "AM";
+                displayH = h % 12;
+                if (displayH === 0) displayH = 12;
+                amPmLabel.innerHTML = amPmText;
+            } else {
+                amPmLabel.innerHTML = "24H";
+            }
+
+            function pad(n) { return n < 10 ? '0' + n : n; }
+            function setVal(id, val) { document.getElementById(id).innerHTML = val; }
+
+            var hStr = pad(displayH);
+            var mStr = pad(m);
+            var sStr = pad(s);
+
+            setVal('h-top', hStr); setVal('h-bottom', hStr);
+            setVal('m-top', mStr); setVal('m-bottom', mStr);
+            setVal('s-top', sStr); setVal('s-bottom', sStr);
+        }
+
+        setInterval(updateClock, 1000);
+        updateClock();
+
+        trigger.addEventListener('click', function(e) {
+            if (menu.className.indexOf('active') === -1) {
+                menu.className += ' active';
+            } else {
+                menu.className = menu.className.replace(' active', '');
+            }
+            e.stopPropagation();
+        });
+
+        document.body.addEventListener('click', function() {
+            menu.className = menu.className.replace(' active', '');
+        });
+
+        menu.addEventListener('click', function(e) { e.stopPropagation(); });
+
+        function setFormat(mode) {
+            if (mode === 24) {
+                is24Hour = true;
+                document.getElementById('btn-24h').className = 'btn active-mode';
+                document.getElementById('btn-12h').className = 'btn';
+            } else {
+                is24Hour = false;
+                document.getElementById('btn-24h').className = 'btn';
+                document.getElementById('btn-12h').className = 'btn active-mode';
+            }
+            updateClock();
+        }
+
+        function adjustSize(delta) {
+            currentSize += delta;
+            if (currentSize < 60) currentSize = 60;
+            if (currentSize > 180) currentSize = 180;
+            var nums = document.querySelectorAll('.number');
+            for (var i = 0; i < nums.length; i++) {
+                nums[i].style.fontSize = currentSize + 'px';
+            }
+        }
+
+        function toggleBlur() {
+            isBlurred = !isBlurred;
+            var btn = document.getElementById('btn-blur');
+            if (isBlurred) {
+                bgLayer.style.webkitFilter = "blur(15px)";
+                bgLayer.style.transform = "scale(1.1)";
+                btn.className = "btn active-mode";
+            } else {
+                bgLayer.style.webkitFilter = "none";
+                bgLayer.style.transform = "scale(1)";
+                btn.className = "btn";
+            }
+        }
+
+        function cycleBg() {
+            bgIndex++;
+            if (bgIndex >= backgrounds.length) bgIndex = 0;
+            bgLayer.style.backgroundImage = backgrounds[bgIndex];
+        }
+
+        function handleResize() {
+            var width = window.innerWidth;
+            var scale = 1;
+            // 针对 iPhone 4s/SE 等小屏优化
+            if (width < 500) {
+                scale = width / 520; 
+            }
+            var group = document.querySelector('.clock-group');
+            group.style.webkitTransform = 'scale(' + scale + ')';
+            group.style.transform = 'scale(' + scale + ')';
+        }
+
+        window.addEventListener('resize', handleResize);
+        handleResize();
+    </script>
+</body>
+</html>
